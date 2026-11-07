@@ -1,0 +1,5 @@
+source=/tmp/INT6163/hospital_data_sampleee.xlsx
+rows=29998
+columns=12
+duplicate_rows=0
+columns=Date, Medication Revenue, Lab Cost, Consultation Revenue, Doctor Type, Financial Class, Patient Type, Entry Time, Post-Consultation Time, Completion Time, Patient ID, _source_sheet
