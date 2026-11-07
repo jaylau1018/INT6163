@@ -1,0 +1,5 @@
+﻿step,rows_before,rows_after,rows_removed,action
+trim_column_names,29998,29998,0,去除列名首尾空格，不删除记录
+remove_exact_duplicates,29998,29998,0,删除完全重复行
+flag_invalid_time_order,29998,29998,0,标记时间顺序异常，不静默删除；下游建模须明确处理
+flag_constant_columns,29998,29998,0,标记常量字段：Patient Type；不自动删除

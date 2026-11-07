@@ -10,7 +10,9 @@ path = kagglehub.dataset_download("abdulqaderasiirii/hospital-patient-data")
 print(path)
 ```
 
-报告应记录实际下载日期、数据集版本（如果 Kaggle 页面提供）以及原始文件名。数据集用于课程分析和模型实验；正式医疗决策前必须核实数据许可、生成方式、采集机构和隐私处理状态。数据不能被解释为真实医院系统的完整记录，也不能直接用于诊断、分诊或资源分配。
+本次实际分析文件为 `hospital_data_sampleee.xlsx`，分析日期为 2026-11-07。数据页为 <https://www.kaggle.com/datasets/abdulqaderasiirii/hospital-patient-data>，下载方式是题目提供的 `kagglehub.dataset_download(...)`。Kaggle 版本号和许可证没有随上传文件提供，提交前应从数据页核对并补填，不能自行推断。脚本会在 `provenance.json` 保存输入文件 SHA-256、文件大小、列名和生成时间。
+
+数据集用于课程分析和模型实验；正式医疗决策前必须核实数据许可、生成方式、采集机构和隐私处理状态。数据不能被解释为真实医院系统的完整记录，也不能直接用于诊断、分诊或资源分配。
 
 **一行的含义：** 本文件每行对应一名患者的一次就诊/医疗服务记录；`Patient ID` 在样本中唯一，因此本样本共有 29,998 行和 29,998 个不同患者 ID。实际研究仍应确认数据字典，因为不能仅凭 ID 唯一就断言数据一定是患者级而不是事件级。
 
@@ -60,7 +62,7 @@ python A_数据质量分析.py --data /path/to/downloaded/file.csv --out outputs
 6. 对类别值检查拼写变体和稀有类别；合并类别必须有业务理由；
 7. 建模前再切分数据。缺失值填补、标准化、编码和异常值处理应只在训练集拟合，避免测试信息泄漏。
 
-`A_数据质量分析.py` 已对本文件运行，输出 `column_profile.csv`、`duplicate_summary.csv`、`numeric_value_checks.csv`、`categorical_summary.csv`、`time_checks.csv` 和 `candidate_id_checks.csv`，作为上述判断的证据。
+脚本额外生成 `cleaning_audit.csv`，逐步记录列名规范化、完全重复处理、金额转换、时间异常标记和常量字段标记。默认不删除时间异常记录，避免把数据质量问题隐藏；下游模型必须报告是否排除这 389 行及其理由。脚本已对本文件运行，输出 `column_profile.csv`、`duplicate_summary.csv`、`numeric_value_checks.csv`、`categorical_summary.csv`、`time_checks.csv`、`candidate_id_checks.csv`、`cleaning_audit.csv` 和 `provenance.json`。
 
 ## 4. 质量、覆盖与偏差
 
@@ -72,6 +74,8 @@ python A_数据质量分析.py --data /path/to/downloaded/file.csv --out outputs
 - 金额字段在 Excel 中以文本形式保存，需去除 `$` 和千位分隔符后转为数值；`$-` 转为缺失并报告缺失率。负数、零值和无穷值由 `numeric_value_checks.csv` 检查。
 - 时间字段存在大量重复值，这是时间精度和就诊时段的自然现象，不等同于重复记录。`Entry Time ≤ Post-Consultation Time` 的顺序检查未发现逆序，但有 **389 行**违反 `Post-Consultation Time ≤ Completion Time`，应在建模前标记、核实或排除。
 - 数据只覆盖 13 天、单一 `Patient Type`，且没有明显的年龄、性别、疾病、诊断、结果或医院机构字段。因此结果不能外推到其他时间、医院、人群或临床结局。
+
+本文件没有明确的临床目标标签。B/C 必须在建模前写明目标、预测时点和标签生成规则；如果选择收入、费用或服务时长作为目标，应明确这是业务/运营预测而非临床风险预测。`Patient ID` 只能用于审计，任何预测时点之后产生的字段均不得作为特征。
 
 这些限制意味着后续模型更适合预测收入/费用或服务时长等观测目标，而不适合声称预测疾病、康复或临床风险；若要做临床结果预测，必须补充经过批准且有明确标签的数据。质量分析只描述数据中观察到的关联，不能把相关性写成治疗效果或因果关系。
 
@@ -87,4 +91,7 @@ python A_数据质量分析.py --data /path/to/downloaded/file.csv --out outputs
 - `outputs/a_quality/numeric_value_checks.csv`：数值异常证据；
 - `outputs/a_quality/categorical_summary.csv`：类别频数和比例；
 - `outputs/a_quality/time_checks.csv`：日期解析和时间顺序检查；
+- `outputs/a_quality/cleaning_audit.csv`：逐步清洗审计；
+- `outputs/a_quality/provenance.json`：输入文件指纹和运行元数据；
+- `README_A部分.md`：执行顺序、输出说明和与 B/C 的接口约定；
 - 本节报告：数据来源、粒度、清洗决策、覆盖偏差、隐私和使用边界。

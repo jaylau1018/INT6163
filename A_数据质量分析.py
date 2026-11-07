@@ -1,7 +1,7 @@
-"""A 部分：医院患者数据的数据字典与质量分析。
+"""A 部分：医院患者数据的数据字典、质量分析与清洗审计。
 
 用法：
-    python A_数据质量分析.py --data /path/to/data.csv --out outputs/a_quality
+    python A_数据质量分析.py --data /path/to/data.xlsx --out outputs/a_quality
 
 支持 CSV、Excel 和 Parquet。脚本不会修改原始文件；所有清洗规则均输出为
 可审计的统计表，便于把实际运行结果填入报告。
@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import re
 
@@ -27,6 +29,14 @@ def load_data(path: Path) -> pd.DataFrame:
     if suffix == ".parquet":
         return pd.read_parquet(path)
     raise ValueError(f"不支持的文件格式: {path.suffix}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def normalise_name(name: object) -> str:
@@ -165,21 +175,119 @@ def time_checks(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply transparent, non-destructive cleaning rules and return an audit."""
+    data = df.copy()
+    audit = []
+
+    def record(step: str, before: int, after: int, action: str) -> None:
+        audit.append(
+            {
+                "step": step,
+                "rows_before": before,
+                "rows_after": after,
+                "rows_removed": before - after,
+                "action": action,
+            }
+        )
+
+    before = len(data)
+    data.columns = [str(column).strip() for column in data.columns]
+    record("trim_column_names", before, len(data), "去除列名首尾空格，不删除记录")
+
+    before = len(data)
+    data = data.drop_duplicates().copy()
+    record("remove_exact_duplicates", before, len(data), "删除完全重复行")
+
+    money_columns = ["Medication Revenue", "Lab Cost", "Consultation Revenue"]
+    for column in money_columns:
+        if column in data:
+            data[column] = pd.to_numeric(
+                data[column].astype("string")
+                .str.replace(r"[$,]", "", regex=True)
+                .replace({"$-": pd.NA, "-": pd.NA, "": pd.NA}),
+                errors="coerce",
+            )
+    date_columns = [column for column in data if "date" in str(column).lower()]
+    for column in date_columns:
+        data[column] = pd.to_datetime(data[column], errors="coerce")
+
+    time_columns = [column for column in data if "time" in str(column).lower()]
+    parsed_times = {
+        column: pd.to_datetime(data[column].astype("string"), format="%H:%M:%S", errors="coerce")
+        for column in time_columns
+    }
+    if {"Entry Time", "Post-Consultation Time", "Completion Time"} <= set(parsed_times):
+        invalid_time = (
+            (parsed_times["Entry Time"] > parsed_times["Post-Consultation Time"])
+            | (parsed_times["Post-Consultation Time"] > parsed_times["Completion Time"])
+        )
+        data["_invalid_time_order"] = invalid_time
+    else:
+        data["_invalid_time_order"] = False
+
+    data["_invalid_time_order"] = data["_invalid_time_order"].fillna(True)
+    record(
+        "flag_invalid_time_order",
+        len(data),
+        len(data),
+        "标记时间顺序异常，不静默删除；下游建模须明确处理",
+    )
+
+    constant_columns = [
+        column for column in data.columns
+        if not str(column).startswith("_") and data[column].nunique(dropna=False) <= 1
+    ]
+    for column in constant_columns:
+        data[f"_constant_{normalise_name(column)}"] = data[column].nunique(dropna=False)
+    record(
+        "flag_constant_columns",
+        len(data),
+        len(data),
+        f"标记常量字段：{', '.join(map(str, constant_columns)) or '无'}；不自动删除",
+    )
+    return data, pd.DataFrame(audit)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, type=Path)
     parser.add_argument("--out", default=Path("outputs/a_quality"), type=Path)
+    parser.add_argument("--write-cleaned", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
     df = load_data(args.data)
     df.columns = [str(column).strip() for column in df.columns]
+    cleaned, cleaning_audit = clean_data(df)
 
     profile_columns(df).to_csv(args.out / "column_profile.csv", index=False, encoding="utf-8-sig")
     duplicate_summary(df).to_csv(args.out / "duplicate_summary.csv", index=False, encoding="utf-8-sig")
     value_checks(df).to_csv(args.out / "numeric_value_checks.csv", index=False, encoding="utf-8-sig")
     categorical_summary(df).to_csv(args.out / "categorical_summary.csv", index=False, encoding="utf-8-sig")
     time_checks(df).to_csv(args.out / "time_checks.csv", index=False, encoding="utf-8-sig")
+    cleaning_audit.to_csv(args.out / "cleaning_audit.csv", index=False, encoding="utf-8-sig")
+    if args.write_cleaned:
+        cleaned.to_csv(args.out / "cleaned_data.csv", index=False, encoding="utf-8-sig")
+
+    metadata = {
+        "source_file": str(args.data.resolve()),
+        "source_sha256": sha256(args.data),
+        "source_bytes": args.data.stat().st_size,
+        "rows_raw": int(len(df)),
+        "columns_loaded": [str(column) for column in df.columns],
+        "columns_raw": [
+            str(column) for column in df.columns if str(column) != "_source_sheet"
+        ],
+        "generated_at_utc": pd.Timestamp.now(tz="UTC").isoformat(),
+        "cleaned_output_written": bool(args.write_cleaned),
+        "target": "未在数据文件中提供；须由 B/C 明确标签和预测时点后再建模",
+        "prohibited_features": ["Patient ID", "任何在预测时点之后产生的字段"],
+    }
+    (args.out / "provenance.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     ids = candidate_id_columns(df)
     id_rows = []
@@ -200,6 +308,7 @@ def main() -> None:
         file.write(f"columns={len(df.columns)}\n")
         file.write(f"duplicate_rows={int(df.duplicated().sum())}\n")
         file.write("columns=" + ", ".join(map(str, df.columns)) + "\n")
+        file.write(f"sha256={metadata['source_sha256']}\n")
 
     print(f"rows={len(df)}, columns={len(df.columns)}")
     print(f"wrote={args.out.resolve()}")
