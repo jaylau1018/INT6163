@@ -3,7 +3,7 @@
   "source_sha256": "32223a545bf03a2b9e22a00fdb79809fed58eb41e5be52cf5fd82e8aef15d2cb",
   "source_bytes": 2248474,
   "rows_raw": 29998,
-  "columns_raw": [
+  "columns_loaded": [
     "Date",
     "Medication Revenue",
     "Lab Cost",
@@ -17,7 +17,20 @@
     "Patient ID",
     "_source_sheet"
   ],
-  "generated_at_utc": "2026-11-07T07:37:39.289575+00:00",
+  "columns_raw": [
+    "Date",
+    "Medication Revenue",
+    "Lab Cost",
+    "Consultation Revenue",
+    "Doctor Type",
+    "Financial Class",
+    "Patient Type",
+    "Entry Time",
+    "Post-Consultation Time",
+    "Completion Time",
+    "Patient ID"
+  ],
+  "generated_at_utc": "2026-11-07T07:38:01.930379+00:00",
   "cleaned_output_written": false,
   "target": "未在数据文件中提供；须由 B/C 明确标签和预测时点后再建模",
   "prohibited_features": [
