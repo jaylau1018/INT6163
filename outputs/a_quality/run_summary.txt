@@ -1,6 +1,0 @@
-source=/tmp/hospital_data_sampleee.xlsx
-rows=29998
-columns=12
-duplicate_rows=0
-columns=Date, Medication Revenue, Lab Cost, Consultation Revenue, Doctor Type, Financial Class, Patient Type, Entry Time, Post-Consultation Time, Completion Time, Patient ID, _source_sheet
-sha256=32223a545bf03a2b9e22a00fdb79809fed58eb41e5be52cf5fd82e8aef15d2cb

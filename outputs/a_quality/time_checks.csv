@@ -1,4 +1,0 @@
-﻿column,n_parseable,n_unparseable,min,max
-Date,29998,0,2019-11-01,2019-11-13 00:00:00
-Entry Time -> Post-Consultation Time,29998,0,,n_reverse=0
-Post-Consultation Time -> Completion Time,29998,0,,n_reverse=389
